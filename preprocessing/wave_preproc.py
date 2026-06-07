@@ -1,0 +1,96 @@
+import os
+import pandas as pd
+from tqdm import tqdm
+import wfdb
+import torch
+
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+wave_path = os.path.join(root_dir, 'mimiciv', 'wave')
+wave_record_path = os.path.join(root_dir, 'utils', 'mappings')
+#recursively find the root and append on to the record_list path
+
+
+mapping_df = pd.read_csv(os.path.join(wave_record_path, 'wave_record_list.csv.gz'), compression='gzip')
+
+def _turn_to_embedding():
+    return ecg_signal_embedding_extraction.extract_data('wave')
+
+def _turn_to_tensor(record_name):
+    base_name = os.path.splitext(record_name)[0]
+
+    if base_name[-1].isalpha():
+        base_name = base_name[:-1]
+
+    hea_file = os.path.join(wave_path, base_name + ".hea")
+    if not os.path.exists(hea_file):
+        raise FileNotFoundError(f"Header file not found: {hea_file}")
+
+    record = wfdb.rdrecord(os.path.join(wave_path, base_name))
+    signal_data = record.p_signal
+    return torch.tensor(signal_data, dtype=torch.float32)
+
+    
+def _get_note_info(note_df,file_id, col):
+    file_id_str = str(file_id).strip()
+    note_df['file_id'] = note_df['file_id'].astype(str).str.strip()
+
+    match = note_df[note_df['file_id'] == file_id_str]
+
+    if match.empty:
+        raise ValueError(f"No match found for file_id: {file_id_str}")
+    if col not in match.columns:
+        raise ValueError(f"Column '{col}' not found in DataFrame")
+
+    return match.iloc[0][col]
+
+def _find_image_path(image_name):
+    for root, dirs, files in os.walk(root_dir):
+        for file in files:
+            if os.path.splitext(file)[0] == image_name:
+                return os.path.join(root, file)
+
+def extract_data(op, wave_tensor_op, wave_embedding_op, subject_ids=None):
+    print('===========MIMIC-IV WAVEFORM============')
+    records = []
+    for file in tqdm(os.listdir(wave_path), total=len(os.listdir(wave_path))):
+        file_name = os.path.splitext(file)[0]
+        if op == 'Yes':
+            file_path = _find_image_path(file_name)
+        else:
+            file_path = None
+
+        if wave_tensor_op:
+            records.append({
+                'subject_id': _get_note_info(mapping_df, file_name, 'subject_id'),
+                'file_id': file_name,
+                'wave_id': _get_note_info(mapping_df, file_name, 'wave_id'),
+                'path': file_path,
+                'wave_tensor': _turn_to_tensor(file_name)
+            })
+        else:
+            records.append({
+                'subject_id': _get_note_info(mapping_df, file_name, 'subject_id'),
+                'file_id': file_name,
+                'wave_id': _get_note_info(mapping_df, file_name, 'wave_id'),
+                'path': file_path
+            })
+
+    df = pd.DataFrame(records)
+
+    # Filter by subject_ids if provided
+    if subject_ids is not None and len(subject_ids) > 0:
+        df = df[df['subject_id'].isin(subject_ids)]
+
+    out_csv = os.path.join(root_dir, 'data', 'cohort', 'mimiciv_wave_cohort.csv.gz')
+    df.to_csv(out_csv, compression='gzip')
+    print('[SAVED COHORT]')
+
+    if wave_embedding_op:
+        _turn_to_embedding()
+
+    return df
+
+    
+
+
+

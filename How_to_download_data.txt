@@ -1,0 +1,15 @@
+Run this command in the designated folder in mimiciv
+
+Replace patients.txt with the path of the txt file. 
+
+# This loops through every line in patients.txt
+for p_id in $(cat patients.txt); do
+    # Extract the first two digits for the subfolder (e.g., 10 from 10000032)
+    p_group=${p_id:0:2}
+    
+    echo "Downloading patient p${p_id}..."
+    
+    wget -r -N -c -np -nH --cut-dirs=3 \
+         --user [USERNAME] --ask-password \
+         "https://physionet.org/files/mimic-cxr-jpg/2.1.0/p${p_group}/p${p_id}/"
+done
